@@ -1,0 +1,644 @@
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VideoHub - 弾幕上から順に整列版</title>
+    <style>
+        :root {
+            --bg-color: #f0f2f5;
+            --header-bg: #222;
+            --primary-blue: #007cff;
+            --border-color: #ddd;
+        }
+        body {
+            font-family: "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
+            margin: 0;
+            background-color: var(--bg-color);
+            color: #333;
+        }
+
+        /* ヘッダー */
+        .header {
+            background-color: var(--header-bg);
+            color: white;
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .header .logo { font-size: 1.4rem; font-weight: bold; }
+
+        /* メインレイアウト */
+        .container {
+            display: flex;
+            max-width: 1400px;
+            margin: 20px auto;
+            gap: 20px;
+            padding: 0 15px;
+        }
+
+        /* 左側：投稿・編集フォーム */
+        .left-panel {
+            flex: 0 0 350px;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border: 3px solid #6cb4ee;
+        }
+        .left-panel h2 { text-align: center; color: var(--primary-blue); margin-top: 0; font-size: 1.2rem; }
+        
+        .upload-area {
+            border: 2px dashed #99cfff;
+            background: #f4f9ff;
+            padding: 20px 10px;
+            text-align: center;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .upload-area:hover { background: #e6f2ff; }
+        .upload-area input[type="file"] { display: none; }
+        .upload-btn {
+            background: var(--primary-blue);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            display: inline-block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 0.9rem; }
+        .form-group input[type="text"], .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-family: inherit;
+        }
+        .form-group textarea { resize: vertical; height: 60px; }
+        
+        .btn-update {
+            width: 100%;
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .btn-update:hover { background: #218838; }
+
+        /* 右側：プレイヤーと周辺コンテンツ */
+        .right-panel {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        /* プレイヤーエリア */
+        .player-container {
+            background: black;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        }
+        .player-header {
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+            color: white;
+            padding: 15px;
+            z-index: 10;
+            pointer-events: none;
+        }
+        .player-header h2 { margin: 0; font-size: 1.2rem; text-shadow: 1px 1px 2px black; }
+        
+        video {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            display: block;
+            background: #000;
+        }
+
+        /* 🎬 弾幕用ステージ */
+        .comment-stage {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            overflow: hidden;
+            z-index: 5;
+        }
+
+        /* クッキリした2重枠（袋文字） */
+        .danmaku-text {
+            position: absolute;
+            white-space: nowrap;
+            font-weight: bold;
+            letter-spacing: 1px;
+            will-change: transform;
+            text-shadow: 
+                -2px -2px 0 #333,  2px -2px 0 #333, -2px  2px 0 #333,  2px  2px 0 #333,
+                -2px  0px 0 #333,  2px  0px 0 #333,  0px -2px 0 #333,  0px  2px 0 #333,
+                -1px -2px 0 #333,  1px -2px 0 #333, -1px  2px 0 #333,  1px  2px 0 #333,
+                -2px -1px 0 #333,  2px -1px 0 #333, -2px  1px 0 #333,  2px  1px 0 #333,
+                 3px  3px 2px rgba(0,0,0,0.6);
+        }
+
+        /* コメント入力バー */
+        .comment-bar {
+            background: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .comment-bar .cmd-input {
+            width: 120px;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            text-align: center;
+            font-weight: bold;
+            background: #fafafa;
+        }
+        .comment-bar .main-input {
+            flex-grow: 1;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+        }
+        .comment-bar button {
+            background: var(--primary-blue);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        /* 下部エリア */
+        .bottom-content {
+            display: flex;
+            gap: 20px;
+        }
+        .playlist-area {
+            flex: 1.5;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .playlist-area h3 { margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 10px; font-size: 1rem; }
+        
+        .video-item-link {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+            align-items: center;
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 6px;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+        }
+        .video-item-link:hover { background: #f4f9ff; border-color: #cce5ff; }
+        .video-item-link.active { background: #e6f2ff; border-left: 5px solid var(--primary-blue); }
+        
+        .thumbnail-mock {
+            width: 80px; height: 45px;
+            background: #444; border-radius: 4px;
+            display: flex; align-items: center; justify-content: center;
+            color: white; font-size: 0.75rem; flex-shrink: 0;
+        }
+        .video-info-mock { flex-grow: 1; overflow: hidden; }
+        .video-info-mock strong { 
+            color: #333; display: block; margin-bottom: 2px; font-size: 0.85rem;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+
+        /* コメントログパネル */
+        .comment-log-area {
+            flex: 1.2;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            max-height: 400px;
+            display: flex;
+            flex-direction: column;
+        }
+        .comment-log-area h3 { margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 10px; font-size: 1rem; }
+        .comment-list {
+            list-style: none; padding: 0; margin: 0;
+            overflow-y: auto; flex-grow: 1; font-size: 0.85rem;
+        }
+        .comment-item {
+            padding: 6px 0; border-bottom: 1px solid #f9f9f9;
+            display: flex; justify-content: space-between; gap: 10px;
+        }
+        .comment-item .txt { word-break: break-all; }
+        .comment-item .time { color: #888; flex-shrink: 0; }
+
+        /* コメントコマンド表エリア */
+        .command-table-area {
+            flex: 2;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .command-table-area h3 { margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 10px; font-size: 1rem; color: #333; }
+        .cmd-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+            text-align: left;
+        }
+        .cmd-table th, .cmd-table td {
+            padding: 6px 8px;
+            border-bottom: 1px solid #eee;
+        }
+        .cmd-table th { background: #f8f9fa; color: #555; }
+        .cmd-badge {
+            background: #eef2f7; padding: 2px 5px; border-radius: 3px; font-family: monospace; font-weight: bold; color: #c41d7f;
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div class="logo">📺 VideoHub (Structured Danmaku Lane Version)</div>
+</div>
+
+<div class="container">
+    <div class="left-panel">
+        <h2>動画を追加する</h2>
+        <label class="upload-area">
+            <div class="upload-btn">↑ 動画を選択</div>
+            <div style="font-size: 0.8rem; color: #666;">ここにドラッグ＆ドロップでもOK</div>
+            <input type="file" id="file-input" accept="video/*" multiple>
+        </label>
+
+        <hr style="border:0; border-top:1px solid #eee; margin:15px 0;">
+
+        <h2>動画情報を変更</h2>
+        <div class="form-group">
+            <label>動画タイトル</label>
+            <input type="text" id="input-title" placeholder="動画タイトルを入力">
+        </div>
+        <div class="form-group">
+            <label>動画説明</label>
+            <textarea id="input-desc" placeholder="動画説明を入力"></textarea>
+        </div>
+        <button id="btn-update-info" class="btn-update">✍ タイトルを確定する</button>
+    </div>
+
+    <div class="right-panel">
+        
+        <div class="player-container">
+            <div class="player-header">
+                <h2 id="display-title">動画を追加して選択してください</h2>
+            </div>
+            
+            <div id="comment-stage" class="comment-stage"></div>
+            <video id="player" controls autoplay></video>
+        </div>
+
+        <div class="comment-bar">
+            <input type="text" id="command-input" class="cmd-input" placeholder="shita red gothic" title="例: shita red gothic">
+            <input type="text" id="comment-input-main" class="main-input" placeholder="コメントを入力して送信（弾幕は自動的に上から順に整列します）">
+            <button id="comment-submit">送信</button>
+        </div>
+
+        <div class="bottom-content">
+            <div class="playlist-area">
+                <h3>プレイリスト</h3>
+                <div id="playlist-container">
+                    <p id="empty-msg" style="font-size: 0.8rem; color: #888; text-align: center; padding: 10px;">動画を選んでください</p>
+                </div>
+            </div>
+
+            <div class="comment-log-area">
+                <h3>コメントログ</h3>
+                <ul id="comment-list" class="comment-list">
+                    <li style="color:#aaa; text-align:center; padding-top:20px;">履歴なし</li>
+                </ul>
+            </div>
+
+            <div class="command-table-area">
+                <h3>コマンド表</h3>
+                <table class="cmd-table">
+                    <thead>
+                        <tr>
+                            <th>分類</th>
+                            <th>コマンド</th>
+                            <th>効果・備考</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>フォント</td><td><span class="cmd-badge">defont</span></td><td>標準フォント（初期値）</td></tr>
+                        <tr><td>フォント</td><td><span class="cmd-badge">gothic</span></td><td><strong>ＭＳ Ｐゴシック</strong>にする</td></tr>
+                        <tr><td>フォント</td><td><span class="cmd-badge">mincho</span></td><td>明朝体にする</td></tr>
+                        <tr><td>サイズ</td><td><span class="cmd-badge">small</span></td><td>サイズを小さくする</td></tr>
+                        <tr><td>サイズ</td><td><span class="cmd-badge">medium</span></td><td>通常サイズ</td></tr>
+                        <tr><td>サイズ</td><td><span class="cmd-badge">big</span></td><td>サイズを大きくする</td></tr>
+                        <tr><td>位置</td><td><span class="cmd-badge">ue</span></td><td>画面中央上に固定表示</td></tr>
+                        <tr><td>位置</td><td><span class="cmd-badge">shita</span></td><td>画面中央下に固定表示</td></tr>
+                        <tr><td>位置</td><td><span class="cmd-badge">naka</span></td><td>通常通り右から左へ流す</td></tr>
+                        <tr><td>時間制御</td><td><span class="cmd-badge">@秒数</span></td><td>表示時間を変更（例: @10 で10秒表示）</td></tr>
+                        <tr><td>カラー</td><td><span class="cmd-badge">white</span> / <span class="cmd-badge">black</span></td><td>■#FFFFFF / ■#000000</td></tr>
+                        <tr><td>カラー</td><td><span class="cmd-badge">red</span> / <span class="cmd-badge">pink</span></td><td>■#FF0000 / ■#FF8080</td></tr>
+                        <tr><td>カラー</td><td><span class="cmd-badge">orange</span> / <span class="cmd-badge">yellow</span></td><td>■#FFC000 / ■#FFFF00</td></tr>
+                        <tr><td>カラー</td><td><span class="cmd-badge">green</span> / <span class="cmd-badge">cyan</span></td><td>■#00FF00 / ■#00FFFF</td></tr>
+                        <tr><td>カラー</td><td><span class="cmd-badge">blue</span> / <span class="cmd-badge">purple</span></td><td>■#0000FF / ■#C000FF</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    const fileInput = document.getElementById('file-input');
+    const player = document.getElementById('player');
+    const inputTitle = document.getElementById('input-title');
+    const inputDesc = document.getElementById('input-desc');
+    const displayTitle = document.getElementById('display-title');
+    const playlistContainer = document.getElementById('playlist-container');
+    const emptyMsg = document.getElementById('empty-msg');
+    
+    const btnUpdateInfo = document.getElementById('btn-update-info');
+    const commentStage = document.getElementById('comment-stage');
+    const cmdInput = document.getElementById('command-input');
+    const commentInput = document.getElementById('comment-input-main');
+    const commentSubmit = document.getElementById('comment-submit');
+    const commentList = document.getElementById('comment-list');
+
+    let uploadedVideos = [];
+    let currentVideoIndex = null;
+    
+    let activeDanmakus = [];
+
+    // 💡 レーン配置用設定（12本の平行な固定レーンをシミュレート）
+    const TOTAL_LANES = 12;
+    const LANE_HEIGHT_PERCENT = 6.5; // 各レーンの縦幅(%)
+    const START_TOP_PERCENT = 10;    // 最上段の開始位置(%)
+
+    const colorMap = {
+        white: '#FFFFFF', red: '#FF0000', pink: '#FF8080',
+        orange: '#FFC000', yellow: '#FFFF00', green: '#00FF00',
+        cyan: '#00FFFF', blue: '#0000FF', purple: '#C000FF', black: '#000000'
+    };
+
+    function playVideo(index) {
+        currentVideoIndex = index;
+        const video = uploadedVideos[index];
+        if (!video) return;
+
+        document.querySelectorAll('.video-item-link').forEach((el, i) => {
+            el.classList.toggle('active', i === index);
+        });
+
+        player.src = video.url;
+        inputTitle.value = video.name;
+        inputDesc.value = video.desc || '';
+        displayTitle.innerText = video.name;
+        
+        commentStage.innerHTML = '';
+        activeDanmakus = [];
+        
+        player.play();
+
+        const params = new URLSearchParams(window.location.search);
+        params.set('v', video.name);
+        window.history.pushState(null, '', `${window.location.pathname}?${params.toString()}`);
+    }
+
+    btnUpdateInfo.addEventListener('click', () => {
+        if (currentVideoIndex === null || !uploadedVideos[currentVideoIndex]) return;
+        const newTitle = inputTitle.value.trim() || 'タイトルなし';
+        uploadedVideos[currentVideoIndex].name = newTitle;
+        uploadedVideos[uploadedVideos].desc = inputDesc.value;
+        displayTitle.innerText = newTitle;
+        const activeItemTitle = playlistContainer.children[currentVideoIndex].querySelector('.video-link-title');
+        if (activeItemTitle) activeItemTitle.textContent = newTitle;
+        
+        const params = new URLSearchParams(window.location.search);
+        params.set('v', newTitle);
+        window.history.pushState(null, '', `${window.location.pathname}?${params.toString()}`);
+    });
+
+    // 🚀 弾幕生成＆コマンド解析メイン処理
+    function sendDanmaku(text, cmdText) {
+        if (!text) return;
+
+        const danmaku = document.createElement('div');
+        danmaku.className = 'danmaku-text';
+        danmaku.textContent = text;
+
+        let color = '#FFFFFF';
+        let fontSize = '1.8rem'; 
+        let position = 'naka'; 
+        let fontFamily = '"Hiragino Kaku Gothic ProN", "Meiryo", sans-serif'; 
+        let customDuration = null; 
+
+        const cmds = cmdText.toLowerCase().split(/\s+/);
+        cmds.forEach(cmd => {
+            if (colorMap[cmd]) color = colorMap[cmd];
+            if (cmd === 'small') fontSize = '1.2rem';
+            if (cmd === 'big') fontSize = '2.6rem';
+            if (cmd === 'medium') fontSize = '1.8rem';
+            if (cmd === 'ue') position = 'ue';
+            if (cmd === 'shita') position = 'shita';
+            if (cmd === 'naka') position = 'naka';
+            if (cmd === 'gothic') fontFamily = '"MS PGothic", "ＭＳ Ｐゴシック", sans-serif';
+            if (cmd === 'mincho') fontFamily = '"ヒラギノ明朝 ProN W3", "Yu Mincho", "MS P明朝", serif';
+            if (cmd === 'defont') fontFamily = '"Hiragino Kaku Gothic ProN", "Meiryo", sans-serif';
+            if (cmd.startsWith('@')) {
+                const sec = parseFloat(cmd.replace('@', ''));
+                if (!isNaN(sec) && sec > 0) customDuration = sec * 1000;
+            }
+        });
+
+        danmaku.style.color = color;
+        danmaku.style.fontSize = fontSize;
+        danmaku.style.fontFamily = fontFamily;
+        commentStage.appendChild(danmaku);
+
+        const duration = customDuration || 4000; 
+        const stayDuration = customDuration || 3000; 
+
+        // 弾幕オブジェクト作成
+        const danmakuObj = {
+            el: danmaku,
+            position: position,
+            elapsed: 0,
+            duration: position === 'naka' ? duration : stayDuration,
+            lastTimestamp: null,
+            lane: -1, // naka専用レーン番号
+            topPercent: 0
+        };
+
+        const stageWidth = commentStage.offsetWidth;
+
+        if (position === 'naka') {
+            danmaku.style.left = '100%';
+            
+            // 💡 【上から順に空きレーンを探索する衝突判定アルゴリズム】
+            let selectedLane = 0;
+            for (let l = 0; l < TOTAL_LANES; l++) {
+                // 同じレーンにいる先行弾幕をチェック
+                const laneComments = activeDanmakus.filter(d => d.position === 'naka' && d.lane === l);
+                
+                if (laneComments.length === 0) {
+                    selectedLane = l;
+                    break;
+                }
+                
+                // 最も新しくそのレーンに入った先行コメを取得
+                const leading = laneComments[laneComments.length - 1];
+                const leadingProgress = leading.elapsed / leading.duration;
+                const leadingLeft = stageWidth - (stageWidth + leading.el.offsetWidth) * leadingProgress;
+
+                // 先行コメの後端が、右端（画面外）を完全に通過しているか判定
+                if (leadingLeft + leading.el.offsetWidth < stageWidth - 30) {
+                    selectedLane = l;
+                    break;
+                }
+                
+                // 12本のレーンが全部埋まっていたら、最後の手段として一番下（またはランダム）に重ねる
+                if (l === TOTAL_LANES - 1) {
+                    selectedLane = Math.floor(Math.random() * TOTAL_LANES);
+                }
+            }
+
+            danmakuObj.lane = selectedLane;
+            danmakuObj.topPercent = START_TOP_PERCENT + (selectedLane * LANE_HEIGHT_PERCENT);
+            danmaku.style.top = `${danmakuObj.topPercent}%`;
+
+        } else {
+            // 固定コメ（ue / shita）
+            danmaku.style.left = '50%';
+            danmaku.style.transform = 'translateX(-50%)';
+            if (position === 'ue') {
+                danmaku.style.top = '12%';
+            } else {
+                danmaku.style.bottom = '12%';
+            }
+        }
+
+        activeDanmakus.push(danmakuObj);
+
+        // ログ反映
+        if (commentList.innerHTML.includes('履歴なし')) commentList.innerHTML = '';
+        const li = document.createElement('li');
+        li.className = 'comment-item';
+        const formatTime = (time) => {
+            const min = Math.floor(time / 60).toString().padStart(2, '0');
+            const sec = Math.floor(time % 60).toString().padStart(2, '0');
+            return `${min}:${sec}`;
+        };
+        li.innerHTML = `<span class="txt">[${cmdText || '通常'}] ${text}</span><span class="time">${formatTime(player.currentTime)}</span>`;
+        commentList.insertBefore(li, commentList.firstChild);
+    }
+
+    // ⏱️ ループ更新処理
+    function updateDanmakuLoop(timestamp) {
+        if (!player.paused && !player.ended) {
+            const stageWidth = commentStage.offsetWidth;
+
+            for (let i = activeDanmakus.length - 1; i >= 0; i--) {
+                const obj = activeDanmakus[i];
+
+                if (!obj.lastTimestamp) {
+                    obj.lastTimestamp = timestamp;
+                }
+                
+                const deltaTime = timestamp - obj.lastTimestamp;
+                obj.lastTimestamp = timestamp;
+                obj.elapsed += deltaTime;
+
+                const progress = obj.elapsed / obj.duration;
+
+                if (progress >= 1) {
+                    obj.el.remove();
+                    activeDanmakus.splice(i, 1);
+                    continue;
+                }
+
+                if (obj.position === 'naka') {
+                    const currentLeft = stageWidth - (stageWidth + obj.el.offsetWidth) * progress;
+                    obj.el.style.transform = `translateX(${currentLeft - stageWidth}px)`;
+                } else {
+                    if (progress > 0.9) {
+                        obj.el.style.opacity = ((1 - progress) * 10).toString();
+                    }
+                }
+            }
+        } else {
+            activeDanmakus.forEach(obj => obj.lastTimestamp = null);
+        }
+
+        requestAnimationFrame(updateDanmakuLoop);
+    }
+    
+    requestAnimationFrame(updateDanmakuLoop);
+
+    function handleCommentSend() {
+        sendDanmaku(commentInput.value.trim(), cmdInput.value.trim());
+        commentInput.value = '';
+    }
+
+    commentSubmit.addEventListener('click', handleCommentSend);
+    commentInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') handleCommentSend();
+    });
+
+    fileInput.addEventListener('change', (e) => {
+        const files = e.target.files;
+        if (files.length === 0) return;
+        if (emptyMsg) emptyMsg.style.display = 'none';
+
+        Array.from(files).forEach((file) => {
+            const videoUrl = URL.createObjectURL(file);
+            uploadedVideos.push({ name: file.name, url: videoUrl, desc: '' });
+            const currentIndex = uploadedVideos.length - 1;
+
+            const item = document.createElement('div');
+            item.className = 'video-item-link';
+            item.innerHTML = `
+                <div class="thumbnail-mock">▶ 再生</div>
+                <div class="video-info-mock">
+                    <strong class="video-link-title"></strong>
+                </div>
+            `;
+            item.querySelector('.video-link-title').textContent = file.name;
+            item.addEventListener('click', () => playVideo(currentIndex));
+            playlistContainer.appendChild(item);
+        });
+
+        if (uploadedVideos.length > 0 && !new URLSearchParams(window.location.search).get('v')) {
+            playVideo(0);
+        }
+        fileInput.value = '';
+    });
+</script>
+
+</body>
+</html>
